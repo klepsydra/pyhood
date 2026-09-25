@@ -21,3 +21,13 @@ Typed dataclass responses returned by PyhoodClient methods.
 ::: pyhood.models.FuturesOrder
 
 ::: pyhood.models.FuturesPnL
+
+::: pyhood.models.CeresAccount
+
+::: pyhood.models.EventContractQuote
+
+::: pyhood.models.EventContractOrder
+
+::: pyhood.models.EventContractPosition
+
+::: pyhood.models.PredictionMarketNavNode

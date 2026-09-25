@@ -5,6 +5,29 @@ All notable changes to pyhood will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Prediction Markets / Ceres event contracts.** Robinhood Derivatives event-contract
+  trading (Prediction Markets) via the same Ceres surface as futures:
+  - `get_ceres_accounts()` / `get_event_contract_account_id()` — discover `SWAP`
+    accounts (and filter by `rhfAccountNumber`)
+  - `get_event_contract_positions()` / `get_event_contract_orders()` /
+    `get_event_contract_order()` — list and poll with `contractType=EVENT_CONTRACT`
+  - `get_event_contract_fees()` — tentative fee quote (`quantity` or `notionalAmount`;
+    prefers FUTURES account id when auto-discovering, matching live capture)
+  - `place_event_contract_order()` / `cancel_event_contract_order()` — gated behind
+    `allow_live=True`
+  - `get_event_contract_quotes()` — `/marketdata/event/contract/quotes/v1/`
+  - `get_prediction_markets_navigation()` / `get_prediction_markets_events()` —
+    public taxonomy + category event lists
+  - Models: `CeresAccount`, `EventContractQuote`, `EventContractOrder`,
+    `EventContractPosition`, `PredictionMarketNavNode`
+  - Docs: `docs/prediction-markets.md`; tests: `tests/test_event_contracts.py`
+
+  Endpoints reverse-engineered from a live app place capture (Oil WTI Sep 28,
+  10 @ 0.77 → FILLED on SWAP account).
+
 ## [0.12.3] - 2026-09-17
 
 ### Fixed

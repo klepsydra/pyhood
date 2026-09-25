@@ -546,6 +546,56 @@ GET /ceres/v1/accounts/{account_id}/orders/
 
 ---
 
+## Prediction Markets (Event Contracts / Ceres)
+
+Event-contract (Prediction Markets) trading shares the Ceres account list with
+futures. Place uses **SWAP** accounts; fee quotes in live captures used the
+**FUTURES** sibling. See [Prediction Markets](prediction-markets.md).
+
+### GET /ceres/v1/accounts/
+
+Same endpoint as futures. Filter `accountType == 'SWAP'` for event contracts.
+
+### GET /ceres/v1/accounts/{account_id}/positions/?contractType=EVENT_CONTRACT
+
+Open event-contract positions.
+
+### GET /ceres/v1/accounts/{account_id}/orders/?contractType=EVENT_CONTRACT
+
+List orders. Repeat `orderState=` for each desired state.
+
+### GET /ceres/v1/accounts/{account_id}/orders/{order_id}
+
+Single order (poll fill).
+
+### POST /ceres/v1/accounts/fees_for_tentative_order
+
+Fee quote. Body includes `accountId` and `tentativeFuturesOrder` with
+`quantity` **or** `notionalAmount`.
+
+### POST /ceres/v1/event_contract_orders
+
+Place an event-contract order (SWAP `accountId`, legs with
+`contractType=EVENT_CONTRACT`).
+
+### POST /ceres/v1/event_contract_orders/{order_id}/cancel
+
+Cancel; body `{ "accountId": "…" }`.
+
+### GET /marketdata/event/contract/quotes/v1/?ids={uuid,…}
+
+Real-time yes/no bid/ask quotes. Batch ~12 ids.
+
+### GET /prediction-markets/v1/navigation_nodes
+
+Public category taxonomy (`nodes[].displayTabText`).
+
+### GET /prediction-markets/v1/events/?categories={label}
+
+Public event list for a category label. Some sports/combo tabs return 400.
+
+---
+
 ## Debit Card (Cash Management)
 
 ### GET https://minerva.robinhood.com/history/transactions/

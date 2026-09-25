@@ -45,6 +45,7 @@ nav:
     - Stock Quotes: quotes.md
     - Options Chains: options.md
     - Futures Trading: futures.md
+    - Prediction Markets: prediction-markets.md
     - Account & Positions: account.md
     - Crypto Trading: crypto.md
   - Error Handling: error-handling.md

@@ -103,6 +103,7 @@ That makes pyhood a better fit for cron jobs, scheduled portfolio scripts, dashb
 - **Retirement accounts** - discover and trade in Traditional and Roth IRA accounts.
 - **Official crypto API** - use Robinhood's official Crypto Trading API with API keys.
 - **Futures support** - futures contracts, quotes, orders, positions, and P&L helpers.
+- **Prediction Markets** - Ceres event-contract accounts (SWAP), quotes, positions, fee quotes, and gated place/cancel.
 - **Options-first coverage** - equity and index options, chains, Greeks, volume, open interest, and order helpers.
 - **Safer session storage** - JSON session persistence instead of `pickle`.
 - **Rate limiting and retries** - request throttling and retry behavior built in.
@@ -121,6 +122,7 @@ Against [robin_stocks](https://github.com/jmfernandes/robin_stocks) and the acti
 | Official Crypto Trading API | Yes | No | No |
 | Futures contracts and quotes | Yes | No | Yes |
 | Futures positions | Yes | No | Stubbed |
+| Prediction Markets (event contracts) | Yes | No | No |
 | IPO access | Yes | No | Yes |
 | Typed dataclass responses | Yes | No | Partial |
 | Index options: SPX, NDX, VIX, RUT, XSP | Yes | Partial | Yes |
@@ -318,6 +320,17 @@ print(contract.name, quote.last_price, pnl)
 
 See the [futures documentation](https://jamestford.github.io/pyhood/futures/) for details.
 
+### Prediction Markets
+
+```python
+swap_id = client.get_event_contract_account_id()
+positions = client.get_event_contract_positions(account_id=swap_id)
+tabs = client.get_prediction_markets_navigation()
+```
+
+Place/cancel require `allow_live=True`. See the
+[prediction markets documentation](https://jamestford.github.io/pyhood/prediction-markets/).
+
 ### Portfolio and Documents
 
 ```python
@@ -338,6 +351,7 @@ docs = client.get_documents(doc_type="account_statement")
 | Authentication with automatic refresh | Functional |
 | Official crypto trading API | Functional |
 | Futures contracts, quotes, orders, and P&L | Functional |
+| Prediction Markets (Ceres event contracts) | Functional (place/cancel gated) |
 | IRA / retirement accounts | Functional |
 | Banking, ACH transfers, and dividends | Functional |
 | Watchlists | Functional |
@@ -356,6 +370,7 @@ docs = client.get_documents(doc_type="account_statement")
 - [Account documentation](https://jamestford.github.io/pyhood/account/)
 - [Crypto documentation](https://jamestford.github.io/pyhood/crypto/)
 - [Futures documentation](https://jamestford.github.io/pyhood/futures/)
+- [Prediction Markets documentation](https://jamestford.github.io/pyhood/prediction-markets/)
 - [Rate limits](https://jamestford.github.io/pyhood/rate-limits/)
 
 ## Contributing
