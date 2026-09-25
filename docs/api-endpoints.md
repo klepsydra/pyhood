@@ -590,9 +590,22 @@ Real-time yes/no bid/ask quotes. Batch ~12 ids.
 
 Public category taxonomy (`nodes[].displayTabText`).
 
+### GET /prediction-markets/v1/layout?nodeId={id}
+
+Layout components for a navigation tab. Query param is camelCase `nodeId`
+(not `node_id`).
+
 ### GET /prediction-markets/v1/events/?categories={label}
 
 Public event list for a category label. Some sports/combo tabs return 400.
+
+### GET /prediction-markets/v1/events/{event_id}
+
+Single event detail.
+
+### GET /prediction-markets/v1/events/contracts/{contract_id}
+
+Single event-contract browse record.
 
 ---
 

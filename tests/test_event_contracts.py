@@ -370,6 +370,53 @@ class TestQuotesAndNav:
         with pytest.raises(OrderError, match="category"):
             client.get_prediction_markets_events("  ")
 
+    @responses.activate
+    def test_layout_uses_camel_case_node_id(self, client):
+        responses.add(
+            responses.GET,
+            urls.PREDICTION_MARKETS_LAYOUT,
+            json={
+                "results": {
+                    "nodeId": "n2",
+                    "components": [{"eventComponent": {"eventId": "e1"}}],
+                },
+            },
+        )
+        layout = client.get_prediction_markets_layout("n2")
+        assert layout["results"]["nodeId"] == "n2"
+        assert "nodeId=n2" in responses.calls[0].request.url
+        assert "node_id=" not in responses.calls[0].request.url
+
+    def test_layout_requires_node_id(self, client):
+        with pytest.raises(OrderError, match="node_id"):
+            client.get_prediction_markets_layout("  ")
+
+    @responses.activate
+    def test_event_by_id(self, client):
+        responses.add(
+            responses.GET,
+            urls.prediction_markets_event_url("e1"),
+            json={"id": "e1", "name": "Oil Price"},
+        )
+        event = client.get_prediction_markets_event("e1")
+        assert event["id"] == "e1"
+        assert event["name"] == "Oil Price"
+
+    @responses.activate
+    def test_contract_by_id(self, client):
+        responses.add(
+            responses.GET,
+            urls.prediction_markets_contract_url(CONTRACT_ID),
+            json={"id": CONTRACT_ID, "shortName": "Above $89.99"},
+        )
+        contract = client.get_prediction_markets_contract(CONTRACT_ID)
+        assert contract["id"] == CONTRACT_ID
+
+    @responses.activate
+    def test_account_id_alias(self, client):
+        responses.add(responses.GET, urls.CERES_ACCOUNTS, json=_accounts_payload())
+        assert client.get_event_contracts_account_id() == SWAP_ID
+
 
 class TestUrlHelpers:
     def test_url_constants(self):
@@ -383,4 +430,13 @@ class TestUrlHelpers:
         )
         assert urls.PREDICTION_MARKETS_NAV.endswith(
             "/prediction-markets/v1/navigation_nodes"
+        )
+        assert urls.PREDICTION_MARKETS_LAYOUT.endswith(
+            "/prediction-markets/v1/layout"
+        )
+        assert urls.prediction_markets_event_url("e1").endswith(
+            "/prediction-markets/v1/events/e1"
+        )
+        assert urls.prediction_markets_contract_url("c1").endswith(
+            "/prediction-markets/v1/events/contracts/c1"
         )

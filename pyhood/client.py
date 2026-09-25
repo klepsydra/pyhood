@@ -3148,6 +3148,9 @@ class PyhoodClient:
                 return acct.account_id
         raise APIError("No event-contract (SWAP) account found")
 
+    # Alias matching robin_stocks / MCP naming (SWAP discovery).
+    get_event_contracts_account_id = get_event_contract_account_id
+
     def get_event_contract_positions(
         self,
         account_id: str | None = None,
@@ -3569,6 +3572,63 @@ class PyhoodClient:
         )
         results = data.get("results", []) if isinstance(data, dict) else []
         return [e for e in results if isinstance(e, dict) and e.get("id")][:limit]
+
+    def get_prediction_markets_layout(self, node_id: str) -> dict[str, Any]:
+        """Fetch the layout for a navigation node.
+
+        ``GET /prediction-markets/v1/layout?nodeId={id}`` — camelCase query
+        param (do **not** send ``node_id``).
+
+        Args:
+            node_id: Navigation node UUID from
+                :meth:`get_prediction_markets_navigation`.
+
+        Returns:
+            Raw layout payload (typically ``results`` with ``components``).
+        """
+        nid = str(node_id or "").strip()
+        if not nid:
+            raise OrderError("node_id is required")
+        data = self._session.get(
+            urls.PREDICTION_MARKETS_LAYOUT,
+            params={"nodeId": nid},
+        )
+        return data if isinstance(data, dict) else {}
+
+    def get_prediction_markets_event(self, event_id: str) -> dict[str, Any]:
+        """Fetch a single prediction-market event.
+
+        ``GET /prediction-markets/v1/events/{eventId}``.
+
+        Args:
+            event_id: Event UUID.
+
+        Returns:
+            Raw event dict.
+        """
+        eid = str(event_id or "").strip()
+        if not eid:
+            raise OrderError("event_id is required")
+        data = self._session.get(urls.prediction_markets_event_url(eid))
+        return data if isinstance(data, dict) else {}
+
+    def get_prediction_markets_contract(self, contract_id: str) -> dict[str, Any]:
+        """Fetch a single event-contract browse record.
+
+        ``GET /prediction-markets/v1/events/contracts/{contractId}``.
+
+        Args:
+            contract_id: Event-contract UUID (the leg ``contractId`` used to
+                place — not always the web URL ``contract=`` query param).
+
+        Returns:
+            Raw contract dict.
+        """
+        cid = str(contract_id or "").strip()
+        if not cid:
+            raise OrderError("contract_id is required")
+        data = self._session.get(urls.prediction_markets_contract_url(cid))
+        return data if isinstance(data, dict) else {}
 
     @staticmethod
     def _iter_event_contract_quote_payloads(data: Any) -> list[dict]:
