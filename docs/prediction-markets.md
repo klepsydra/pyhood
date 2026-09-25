@@ -58,6 +58,8 @@ List Ceres accounts, optionally filtered.
 
 Auto-discover the first ACTIVE SWAP account.
 
+Also available as `get_event_contracts_account_id` (alias).
+
 **Raises:** `APIError` if none found.
 
 ### `get_event_contract_positions(account_id=None, rhf_account_number=None)`
@@ -106,6 +108,20 @@ Public `GET /prediction-markets/v1/navigation_nodes` category tabs.
 Public `GET /prediction-markets/v1/events/?categories={label}`. Some sports /
 combo tabs return 400 from this endpoint.
 
+### `get_prediction_markets_layout(node_id)`
+
+Public `GET /prediction-markets/v1/layout?nodeId={id}` — **camelCase**
+`nodeId` (not `node_id`). Returns layout components for a navigation tab;
+each `eventComponent` typically carries an `eventId`.
+
+### `get_prediction_markets_event(event_id)`
+
+Public `GET /prediction-markets/v1/events/{eventId}`.
+
+### `get_prediction_markets_contract(contract_id)`
+
+Public `GET /prediction-markets/v1/events/contracts/{contractId}`.
+
 ## Place body (example)
 
 ```json
@@ -138,7 +154,10 @@ combo tabs return 400 from this endpoint.
 | POST | `/ceres/v1/event_contract_orders/{id}/cancel` | Cancel |
 | GET | `/marketdata/event/contract/quotes/v1/` | Quotes |
 | GET | `/prediction-markets/v1/navigation_nodes` | Nav taxonomy |
+| GET | `/prediction-markets/v1/layout?nodeId=` | Category layout |
 | GET | `/prediction-markets/v1/events/` | Events by category |
+| GET | `/prediction-markets/v1/events/{id}` | Event detail |
+| GET | `/prediction-markets/v1/events/contracts/{id}` | Contract detail |
 
 ## Notes
 

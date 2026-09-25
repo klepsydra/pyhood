@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Prediction Markets browse helpers** on top of the Ceres event-contract API:
+  - `get_prediction_markets_layout(node_id)` — `GET …/layout?nodeId=` (camelCase)
+  - `get_prediction_markets_event(event_id)` — `GET …/events/{id}`
+  - `get_prediction_markets_contract(contract_id)` — `GET …/events/contracts/{id}`
+  - Alias `get_event_contracts_account_id` → `get_event_contract_account_id`
+
 - **Prediction Markets / Ceres event contracts.** Robinhood Derivatives event-contract
   trading (Prediction Markets) via the same Ceres surface as futures:
   - `get_ceres_accounts()` / `get_event_contract_account_id()` — discover `SWAP`

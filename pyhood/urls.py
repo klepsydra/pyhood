@@ -99,6 +99,7 @@ EVENT_CONTRACT_ORDERS = f"{BASE}/ceres/v1/event_contract_orders"
 EVENT_CONTRACT_QUOTES = f"{BASE}/marketdata/event/contract/quotes/v1/"
 PREDICTION_MARKETS_NAV = f"{BASE}/prediction-markets/v1/navigation_nodes"
 PREDICTION_MARKETS_EVENTS = f"{BASE}/prediction-markets/v1/events/"
+PREDICTION_MARKETS_LAYOUT = f"{BASE}/prediction-markets/v1/layout"
 
 
 def index_market_data_url(index_id: str) -> str:
@@ -157,6 +158,16 @@ def ceres_positions_url(account_id: str) -> str:
 def event_contract_cancel_url(order_id: str) -> str:
     """URL to cancel an event-contract order."""
     return f"{EVENT_CONTRACT_ORDERS}/{order_id}/cancel"
+
+
+def prediction_markets_event_url(event_id: str) -> str:
+    """URL for a single prediction-market event by id."""
+    return f"{PREDICTION_MARKETS_EVENTS}{event_id}"
+
+
+def prediction_markets_contract_url(contract_id: str) -> str:
+    """URL for a single event contract under prediction-markets browse."""
+    return f"{PREDICTION_MARKETS_EVENTS}contracts/{contract_id}"
 
 
 # ── IPO Access ───────────────────────────────────────────────────────
