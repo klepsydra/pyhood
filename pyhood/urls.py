@@ -91,6 +91,15 @@ FUTURES_CONTRACTS = f"{BASE}/arsenal/v1/futures/contracts/"
 FUTURES_QUOTES = f"{BASE}/marketdata/futures/quotes/v1/"
 FUTURES_ACCOUNTS = f"{BASE}/ceres/v1/accounts/"
 
+# Ceres / Prediction Markets (event contracts)
+# Same account list as futures; filter accountType == 'SWAP' for event contracts.
+CERES_ACCOUNTS = FUTURES_ACCOUNTS
+CERES_FEES_FOR_TENTATIVE_ORDER = f"{BASE}/ceres/v1/accounts/fees_for_tentative_order"
+EVENT_CONTRACT_ORDERS = f"{BASE}/ceres/v1/event_contract_orders"
+EVENT_CONTRACT_QUOTES = f"{BASE}/marketdata/event/contract/quotes/v1/"
+PREDICTION_MARKETS_NAV = f"{BASE}/prediction-markets/v1/navigation_nodes"
+PREDICTION_MARKETS_EVENTS = f"{BASE}/prediction-markets/v1/events/"
+
 
 def index_market_data_url(index_id: str) -> str:
     """URL for index market data (e.g. SPX, NDX)."""
@@ -128,6 +137,26 @@ def portfolio_positions_url(account_number: str) -> str:
 def futures_positions_url(account_id: str) -> str:
     """URL for open futures positions on a specific account."""
     return f"{FUTURES_ACCOUNTS}{account_id}/positions/"
+
+
+def ceres_orders_url(account_id: str) -> str:
+    """URL for Ceres orders (futures or event contracts) on an account."""
+    return f"{CERES_ACCOUNTS}{account_id}/orders/"
+
+
+def ceres_order_url(account_id: str, order_id: str) -> str:
+    """URL for a single Ceres order."""
+    return f"{CERES_ACCOUNTS}{account_id}/orders/{order_id}"
+
+
+def ceres_positions_url(account_id: str) -> str:
+    """URL for Ceres positions on an account."""
+    return f"{CERES_ACCOUNTS}{account_id}/positions/"
+
+
+def event_contract_cancel_url(order_id: str) -> str:
+    """URL to cancel an event-contract order."""
+    return f"{EVENT_CONTRACT_ORDERS}/{order_id}/cancel"
 
 
 # ── IPO Access ───────────────────────────────────────────────────────

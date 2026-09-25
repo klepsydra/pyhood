@@ -435,3 +435,66 @@ class FuturesOrder:
     direction: str = ""  # 'OPENING' or 'CLOSING'
     realized_pnl: float | None = None
     account_id: str = ""
+
+
+# ── Prediction Markets / Event Contracts (Ceres) ─────────────────────
+
+
+@dataclass(frozen=True)
+class CeresAccount:
+    """A Ceres derivatives account (SWAP, FUTURES, or CFTC_30_7)."""
+    account_id: str
+    account_type: str  # 'SWAP' | 'FUTURES' | 'CFTC_30_7'
+    status: str = ""
+    rhf_account_number: str = ""
+    rhs_account_number: str = ""
+
+
+@dataclass(frozen=True)
+class EventContractQuote:
+    """Real-time prediction-market / event-contract quote."""
+    contract_id: str
+    last_trade_price: float = 0.0
+    yes_bid: float = 0.0
+    yes_ask: float = 0.0
+    no_bid: float = 0.0
+    no_ask: float = 0.0
+    bid: float = 0.0
+    ask: float = 0.0
+
+
+@dataclass(frozen=True)
+class EventContractOrder:
+    """Event-contract (prediction markets) order on a SWAP Ceres account."""
+    order_id: str
+    account_id: str
+    contract_id: str
+    side: str  # 'BUY' or 'SELL'
+    quantity: float
+    limit_price: float | None
+    status: str
+    time_in_force: str = ""
+    created_at: str = ""
+    ref_id: str = ""
+    derived_state: str = ""
+
+
+@dataclass(frozen=True)
+class EventContractPosition:
+    """Open event-contract position on a SWAP account."""
+    contract_id: str
+    quantity: float
+    trade_price: float | None = None
+    account_id: str = ""
+    raw: dict | None = None
+
+
+@dataclass(frozen=True)
+class PredictionMarketNavNode:
+    """A category tab from the prediction-markets navigation tree."""
+    node_id: str
+    label: str
+    header: str = ""
+    layout: str = ""
+    rank: int = 0
+    image_url: str = ""

@@ -24,9 +24,13 @@ from pyhood.models import (
     BankAccount,
     Candle,
     CardTransaction,
+    CeresAccount,
     Dividend,
     Document,
     Earnings,
+    EventContractOrder,
+    EventContractPosition,
+    EventContractQuote,
     FuturesContract,
     FuturesOrder,
     FuturesPnL,
@@ -43,6 +47,7 @@ from pyhood.models import (
     Order,
     PortfolioCandle,
     Position,
+    PredictionMarketNavNode,
     Quote,
     Rating,
     StockSplit,
@@ -3060,6 +3065,579 @@ class PyhoodClient:
             o.realized_pnl
             for o in orders
             if o.realized_pnl is not None and "CLOS" in (o.direction or "").upper()
+        )
+
+    # ── Prediction Markets / Event Contracts (Ceres) ─────────────────
+
+    EVENT_CONTRACT = "EVENT_CONTRACT"
+    CERES_ACCOUNT_SWAP = "SWAP"
+    CERES_ACCOUNT_FUTURES = "FUTURES"
+    _EVENT_CONTRACT_QUOTE_BATCH = 12
+
+    def _set_ceres_headers(self, timezone: str = "America/Los_Angeles") -> None:
+        """Headers required by Ceres event-contract / futures endpoints."""
+        self._set_futures_header()
+        self._session._session.headers["X-TimeZone-Id"] = timezone
+
+    def get_ceres_accounts(
+        self,
+        account_type: str | None = None,
+        rhf_account_number: str | None = None,
+    ) -> list[CeresAccount]:
+        """List Ceres accounts (SWAP, FUTURES, CFTC_30_7).
+
+        Args:
+            account_type: Optional filter (e.g. ``'SWAP'``, ``'FUTURES'``).
+            rhf_account_number: Optional brokerage number filter
+                (e.g. ``'5QU49246'``).
+
+        Returns:
+            List of :class:`CeresAccount`.
+        """
+        self._set_ceres_headers()
+        data = self._session.get(urls.CERES_ACCOUNTS)
+        accounts: list[CeresAccount] = []
+        for item in data.get("results", []):
+            if not isinstance(item, dict):
+                continue
+            acct = CeresAccount(
+                account_id=item.get("id", ""),
+                account_type=item.get("accountType", ""),
+                status=item.get("status", ""),
+                rhf_account_number=str(item.get("rhfAccountNumber", "") or ""),
+                rhs_account_number=str(item.get("rhsAccountNumber", "") or ""),
+            )
+            if account_type and acct.account_type != account_type:
+                continue
+            if rhf_account_number and acct.rhf_account_number != str(rhf_account_number):
+                continue
+            accounts.append(acct)
+        return accounts
+
+    def get_event_contract_account_id(
+        self,
+        rhf_account_number: str | None = None,
+        *,
+        require_active: bool = True,
+    ) -> str:
+        """Auto-discover the SWAP (event-contract) Ceres account ID.
+
+        Event-contract trading uses ``accountType == 'SWAP'``. Fee quotes in
+        live captures may use the sibling FUTURES account for the same
+        ``rhfAccountNumber``.
+
+        Args:
+            rhf_account_number: Optional brokerage number (e.g. ``'5QU49246'``).
+            require_active: When True (default), only return ``status == 'ACTIVE'``.
+
+        Returns:
+            The SWAP account UUID.
+
+        Raises:
+            APIError: If no matching SWAP account is found.
+        """
+        from pyhood.exceptions import APIError
+
+        for acct in self.get_ceres_accounts(
+            account_type=self.CERES_ACCOUNT_SWAP,
+            rhf_account_number=rhf_account_number,
+        ):
+            if require_active and acct.status and acct.status.upper() != "ACTIVE":
+                continue
+            if acct.account_id:
+                return acct.account_id
+        raise APIError("No event-contract (SWAP) account found")
+
+    def get_event_contract_positions(
+        self,
+        account_id: str | None = None,
+        rhf_account_number: str | None = None,
+    ) -> list[EventContractPosition]:
+        """Get open event-contract positions on a SWAP account.
+
+        Args:
+            account_id: SWAP Ceres account ID. Auto-discovered if None.
+            rhf_account_number: Used when auto-discovering the SWAP account.
+
+        Returns:
+            List of :class:`EventContractPosition`.
+        """
+        if not account_id:
+            account_id = self.get_event_contract_account_id(rhf_account_number)
+
+        self._set_ceres_headers()
+        positions: list[EventContractPosition] = []
+        url: str | None = urls.ceres_positions_url(account_id)
+        params: dict[str, str] | None = {"contractType": self.EVENT_CONTRACT}
+        while url:
+            data = self._session.get(url, params=params)
+            params = None
+            if not isinstance(data, dict):
+                break
+            for item in data.get("results", []):
+                if not isinstance(item, dict):
+                    continue
+                qty_raw = item.get("quantity", 0)
+                price_raw = item.get("tradePrice")
+                positions.append(EventContractPosition(
+                    contract_id=str(
+                        item.get("contractId") or item.get("contract_id") or ""
+                    ),
+                    quantity=float(qty_raw or 0),
+                    trade_price=float(price_raw) if price_raw not in (None, "") else None,
+                    account_id=account_id,
+                    raw=item,
+                ))
+            url = data.get("next")
+        return positions
+
+    def get_event_contract_orders(
+        self,
+        account_id: str | None = None,
+        rhf_account_number: str | None = None,
+        order_states: list[str] | None = None,
+    ) -> list[EventContractOrder]:
+        """List event-contract orders on a SWAP account.
+
+        Args:
+            account_id: SWAP Ceres account ID. Auto-discovered if None.
+            rhf_account_number: Used when auto-discovering the SWAP account.
+            order_states: Optional list of ``orderState`` filters (repeated
+                query params). When None, returns all states the API includes.
+
+        Returns:
+            List of :class:`EventContractOrder`.
+        """
+        if not account_id:
+            account_id = self.get_event_contract_account_id(rhf_account_number)
+
+        self._set_ceres_headers()
+        orders: list[EventContractOrder] = []
+        url: str | None = urls.ceres_orders_url(account_id)
+        # requests encodes list values as repeated keys — matches RH capture.
+        params: dict[str, Any] | None = {"contractType": self.EVENT_CONTRACT}
+        if order_states:
+            params["orderState"] = list(order_states)
+
+        while url:
+            data = self._session.get(url, params=params)
+            params = None
+            if not isinstance(data, dict):
+                break
+            for item in data.get("results", []):
+                if not isinstance(item, dict):
+                    continue
+                mapped = self._map_event_contract_order(item, account_id=account_id)
+                if mapped is not None:
+                    orders.append(mapped)
+            url = data.get("next")
+        return orders
+
+    def get_event_contract_order(
+        self,
+        order_id: str,
+        account_id: str | None = None,
+        rhf_account_number: str | None = None,
+    ) -> EventContractOrder:
+        """Fetch a single event-contract order (poll fill / status).
+
+        Args:
+            order_id: Order UUID.
+            account_id: SWAP Ceres account ID. Auto-discovered if None.
+            rhf_account_number: Used when auto-discovering the SWAP account.
+
+        Returns:
+            :class:`EventContractOrder`.
+
+        Raises:
+            OrderError: If the order cannot be mapped from the response.
+        """
+        if not account_id:
+            account_id = self.get_event_contract_account_id(rhf_account_number)
+
+        self._set_ceres_headers()
+        data = self._session.get(urls.ceres_order_url(account_id, order_id))
+        item = data if isinstance(data, dict) else {}
+        # Some responses wrap the order; accept both.
+        if "id" not in item and isinstance(item.get("order"), dict):
+            item = item["order"]
+        mapped = self._map_event_contract_order(item, account_id=account_id)
+        if mapped is None:
+            raise OrderError(f"Event-contract order {order_id} not found or unparseable")
+        return mapped
+
+    def get_event_contract_fees(
+        self,
+        *,
+        contract_id: str,
+        order_side: str,
+        limit_price: float,
+        quantity: float | None = None,
+        notional_amount: float | None = None,
+        account_id: str | None = None,
+        rhf_account_number: str | None = None,
+        use_futures_account_for_fees: bool = True,
+    ) -> dict[str, Any]:
+        """Quote fees for a tentative event-contract order.
+
+        Requires ``quantity`` **or** ``notional_amount``. Live captures used the
+        FUTURES Ceres account id for fee quotes and the SWAP account for place.
+
+        Args:
+            contract_id: Event-contract instrument UUID.
+            order_side: ``'BUY'`` or ``'SELL'``.
+            limit_price: Limit price (0–1 style for yes/no contracts).
+            quantity: Contract count (stringified for the API).
+            notional_amount: Alternate sizing by notional dollars.
+            account_id: Ceres account for the fee quote. Auto-picked if None.
+            rhf_account_number: Used when auto-picking accounts.
+            use_futures_account_for_fees: When True (default) and ``account_id``
+                is None, prefer the FUTURES sibling account (matches capture).
+
+        Returns:
+            Raw fee response dict from Ceres.
+
+        Raises:
+            OrderError: If neither quantity nor notional_amount is given.
+            APIError: If no suitable account is found.
+        """
+        from pyhood.exceptions import APIError
+
+        if quantity is None and notional_amount is None:
+            raise OrderError("quantity or notional_amount required for fee quote")
+
+        if not account_id:
+            if use_futures_account_for_fees:
+                futures = self.get_ceres_accounts(
+                    account_type=self.CERES_ACCOUNT_FUTURES,
+                    rhf_account_number=rhf_account_number,
+                )
+                active = [
+                    a for a in futures
+                    if not a.status or a.status.upper() == "ACTIVE"
+                ]
+                if active and active[0].account_id:
+                    account_id = active[0].account_id
+            if not account_id:
+                account_id = self.get_event_contract_account_id(rhf_account_number)
+
+        if not account_id:
+            raise APIError("No Ceres account available for fee quote")
+
+        tentative: dict[str, Any] = {
+            "legs": [{
+                "contractType": self.EVENT_CONTRACT,
+                "contractId": str(contract_id),
+                "ratioQuantity": 1,
+                "orderSide": order_side.upper(),
+            }],
+            "limitPrice": f"{float(limit_price):.2f}",
+        }
+        if quantity is not None:
+            tentative["quantity"] = str(quantity)
+        else:
+            tentative["notionalAmount"] = f"{float(notional_amount):.2f}"
+
+        self._set_ceres_headers()
+        return self._session.post(
+            urls.CERES_FEES_FOR_TENTATIVE_ORDER,
+            json_data={
+                "accountId": account_id,
+                "tentativeFuturesOrder": tentative,
+            },
+        )
+
+    def place_event_contract_order(
+        self,
+        *,
+        contract_id: str,
+        order_side: str,
+        quantity: float,
+        limit_price: float,
+        account_id: str | None = None,
+        rhf_account_number: str | None = None,
+        time_in_force: str = "GTD",
+        gtd_expiration_time: str | None = None,
+        ref_id: str | None = None,
+        allow_live: bool = False,
+        tz_id: str = "America/Los_Angeles",
+    ) -> EventContractOrder:
+        """Place an event-contract (prediction markets) order.
+
+        Discovered from a live Robinhood app capture (Ceres
+        ``POST /ceres/v1/event_contract_orders``). Requires the SWAP account.
+
+        Args:
+            contract_id: Event-contract instrument UUID (the traded leg — not
+                necessarily the URL ``contract=`` query param alone).
+            order_side: ``'BUY'`` or ``'SELL'``.
+            quantity: Number of contracts.
+            limit_price: Limit price.
+            account_id: SWAP account UUID. Auto-discovered if None.
+            rhf_account_number: Used when auto-discovering the SWAP account.
+            time_in_force: Default ``'GTD'`` (matches live app capture).
+            gtd_expiration_time: ISO-8601 UTC. Default: next calendar day 07:00Z
+                when ``time_in_force`` is GTD.
+            ref_id: Client reference UUID. Generated if omitted.
+            allow_live: Must be True to submit. Safety gate for reverse-
+                engineered place path (mirrors agentRobin).
+            tz_id: Sent as ``X-TimeZone-Id``.
+
+        Returns:
+            :class:`EventContractOrder` from the place response.
+
+        Raises:
+            OrderError: If ``allow_live`` is False or the response is unparseable.
+        """
+        if not allow_live:
+            raise OrderError("refusing place without allow_live=True")
+
+        if not account_id:
+            account_id = self.get_event_contract_account_id(rhf_account_number)
+
+        tif = time_in_force.upper()
+        exp = gtd_expiration_time
+        if tif == "GTD" and not exp:
+            exp = (datetime.now(timezone.utc) + timedelta(days=1)).strftime(
+                "%Y-%m-%dT07:00:00Z"
+            )
+
+        body: dict[str, Any] = {
+            "accountId": account_id,
+            "legs": [{
+                "contractType": self.EVENT_CONTRACT,
+                "contractId": str(contract_id),
+                "ratioQuantity": 1,
+                "orderSide": order_side.upper(),
+            }],
+            "quantity": str(quantity),
+            "limitPrice": f"{float(limit_price):.2f}",
+            "refId": str(ref_id or uuid.uuid4()),
+            "timeInForce": tif,
+        }
+        if tif == "GTD" and exp:
+            body["gtdExpirationTime"] = exp
+
+        self._set_ceres_headers(timezone=tz_id)
+        data = self._session.post(urls.EVENT_CONTRACT_ORDERS, json_data=body)
+        item = data if isinstance(data, dict) else {}
+        if "id" not in item and isinstance(item.get("order"), dict):
+            item = item["order"]
+        mapped = self._map_event_contract_order(item, account_id=account_id)
+        if mapped is None:
+            raise OrderError("Event-contract place response missing order id")
+        return mapped
+
+    def cancel_event_contract_order(
+        self,
+        order_id: str,
+        *,
+        account_id: str | None = None,
+        rhf_account_number: str | None = None,
+        allow_live: bool = False,
+    ) -> dict[str, Any]:
+        """Cancel an event-contract order.
+
+        ``POST /ceres/v1/event_contract_orders/{orderId}/cancel`` with body
+        ``{accountId}``.
+
+        Args:
+            order_id: Order UUID to cancel.
+            account_id: SWAP account UUID. Auto-discovered if None.
+            rhf_account_number: Used when auto-discovering the SWAP account.
+            allow_live: Must be True to submit (safety gate).
+
+        Returns:
+            Raw cancel response dict.
+
+        Raises:
+            OrderError: If ``allow_live`` is False.
+        """
+        if not allow_live:
+            raise OrderError("refusing cancel without allow_live=True")
+
+        if not account_id:
+            account_id = self.get_event_contract_account_id(rhf_account_number)
+
+        self._set_ceres_headers()
+        return self._session.post(
+            urls.event_contract_cancel_url(order_id),
+            json_data={"accountId": account_id},
+        )
+
+    def get_event_contract_quotes(
+        self,
+        contract_ids: list[str] | str,
+    ) -> dict[str, EventContractQuote]:
+        """Fetch real-time event-contract quotes by instrument id.
+
+        Uses ``/marketdata/event/contract/quotes/v1/`` (public marketdata;
+        same envelope shape as futures quotes). Batches ids in groups of 12.
+
+        Args:
+            contract_ids: One id or a list of event-contract UUIDs.
+
+        Returns:
+            Dict mapping contract_id → :class:`EventContractQuote`.
+        """
+        if isinstance(contract_ids, str):
+            ids = [contract_ids]
+        else:
+            ids = [str(i) for i in contract_ids if i]
+        ids = list(dict.fromkeys(ids))  # preserve order, uniq
+
+        results: dict[str, EventContractQuote] = {}
+        for i in range(0, len(ids), self._EVENT_CONTRACT_QUOTE_BATCH):
+            batch = ids[i : i + self._EVENT_CONTRACT_QUOTE_BATCH]
+            data = self._session.get(
+                urls.EVENT_CONTRACT_QUOTES,
+                params={"ids": ",".join(batch)},
+            )
+            for payload in self._iter_event_contract_quote_payloads(data):
+                cid = str(payload.get("instrument_id") or "")
+                if not cid:
+                    continue
+                results[cid] = EventContractQuote(
+                    contract_id=cid,
+                    last_trade_price=float(payload.get("last_trade_price", 0) or 0),
+                    yes_bid=float(
+                        payload.get("yes_bid_price") or payload.get("bid_price") or 0
+                    ),
+                    yes_ask=float(
+                        payload.get("yes_ask_price") or payload.get("ask_price") or 0
+                    ),
+                    no_bid=float(payload.get("no_bid_price", 0) or 0),
+                    no_ask=float(payload.get("no_ask_price", 0) or 0),
+                    bid=float(payload.get("bid_price", 0) or 0),
+                    ask=float(payload.get("ask_price", 0) or 0),
+                )
+        return results
+
+    def get_prediction_markets_navigation(self) -> list[PredictionMarketNavNode]:
+        """Fetch the public prediction-markets category navigation tree.
+
+        ``GET /prediction-markets/v1/navigation_nodes`` — no auth required for
+        the public taxonomy (session still used if present).
+
+        Returns:
+            Sorted list of :class:`PredictionMarketNavNode`.
+        """
+        data = self._session.get(urls.PREDICTION_MARKETS_NAV)
+        nodes = data.get("nodes", []) if isinstance(data, dict) else []
+        out: list[PredictionMarketNavNode] = []
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            label = str(node.get("displayTabText") or "").strip()
+            if not label:
+                continue
+            out.append(PredictionMarketNavNode(
+                node_id=str(node.get("id") or ""),
+                label=label,
+                header=str(node.get("displayHeaderText") or ""),
+                layout=str(node.get("displayLayoutType") or ""),
+                rank=int(node.get("rank") or 0),
+                image_url=str(node.get("imageUrl") or ""),
+            ))
+        out.sort(key=lambda n: (n.rank, n.label))
+        return out
+
+    def get_prediction_markets_events(
+        self,
+        category: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """List prediction-market events for a navigation category label.
+
+        ``GET /prediction-markets/v1/events/?categories={label}``. Some sports
+        / combo tabs return 400 from this public endpoint.
+
+        Args:
+            category: Display label (e.g. ``'Crypto'``, ``'Climate'``).
+            limit: Max events to return (capped at 250).
+
+        Returns:
+            List of raw event dicts (trimmed to ``limit``).
+        """
+        label = category.strip()
+        if not label:
+            raise OrderError("category is required")
+        limit = max(1, min(int(limit), 250))
+        data = self._session.get(
+            urls.PREDICTION_MARKETS_EVENTS,
+            params={"categories": label},
+        )
+        results = data.get("results", []) if isinstance(data, dict) else []
+        return [e for e in results if isinstance(e, dict) and e.get("id")][:limit]
+
+    @staticmethod
+    def _iter_event_contract_quote_payloads(data: Any) -> list[dict]:
+        """Unwrap marketdata event-contract quote envelopes."""
+        if not isinstance(data, dict):
+            return []
+        out: list[dict] = []
+        entries = data.get("data")
+        if isinstance(entries, list):
+            for inner in entries:
+                if not isinstance(inner, dict):
+                    continue
+                body = inner.get("data")
+                if isinstance(body, dict):
+                    out.append(body)
+                elif "instrument_id" in inner:
+                    out.append(inner)
+        results = data.get("results")
+        if isinstance(results, list):
+            for row in results:
+                if isinstance(row, dict):
+                    out.append(row)
+        return out
+
+    @staticmethod
+    def _map_event_contract_order(
+        item: dict, *, account_id: str = "",
+    ) -> EventContractOrder | None:
+        """Map a Ceres event-contract order payload to EventContractOrder."""
+        if not isinstance(item, dict):
+            return None
+        order_id = str(item.get("id") or item.get("orderId") or "")
+        if not order_id:
+            return None
+
+        legs = item.get("legs") if isinstance(item.get("legs"), list) else []
+        first_leg = legs[0] if legs and isinstance(legs[0], dict) else {}
+        contract_id = str(
+            first_leg.get("contractId")
+            or item.get("contractId")
+            or item.get("contract_id")
+            or ""
+        )
+        side = str(
+            first_leg.get("orderSide")
+            or item.get("orderSide")
+            or item.get("side")
+            or ""
+        ).upper()
+        qty_raw = item.get("quantity", first_leg.get("quantity", 0))
+        price_raw = item.get("limitPrice", item.get("price"))
+        status = str(
+            item.get("orderState")
+            or item.get("state")
+            or item.get("status")
+            or "unknown"
+        )
+        return EventContractOrder(
+            order_id=order_id,
+            account_id=str(item.get("accountId") or account_id or ""),
+            contract_id=contract_id,
+            side=side,
+            quantity=float(qty_raw or 0),
+            limit_price=float(price_raw) if price_raw not in (None, "") else None,
+            status=status,
+            time_in_force=str(item.get("timeInForce") or item.get("time_in_force") or ""),
+            created_at=str(item.get("createdAt") or item.get("created_at") or ""),
+            ref_id=str(item.get("refId") or item.get("ref_id") or ""),
+            derived_state=str(item.get("derivedState") or ""),
         )
 
 
